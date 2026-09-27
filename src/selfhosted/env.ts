@@ -103,7 +103,14 @@ export function createAssetsHandler(frontendPath?: string): SelfHostedEnv['ASSET
 
   return {
     async fetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
-      const url = typeof input === 'string' ? new URL(input, 'http://localhost') : new URL(input.toString());
+      let url: URL;
+      if (typeof input === 'string') {
+        url = new URL(input, 'http://localhost');
+      } else if (input instanceof URL) {
+        url = input;
+      } else {
+        url = new URL((input as Request).url);
+      }
       let pathname = url.pathname;
 
       if (pathname === '/' || pathname === '') {
