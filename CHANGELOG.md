@@ -4,12 +4,12 @@
 
 本仓库在 [NodeWarden](https://github.com/shuaiplus/nodewarden) 基础上新增了 Node.js 自托管部署能力，并保持与 Cloudflare Workers 部署模式完全兼容。
 
-### 同步上游（2026-09-27, commit `pending`）
+### 同步上游（2026-09-27, commit `a2a7b54`）
 - 合并上游 nodewarden main（v1.8.0 后 25 个提交，上游 force push 重写历史）：sharp 0.35.4、browserslist 4.28.7 等 overrides 更新，备份列表容器宽度回流、列表工具栏换行、重复组索引唯一性、主题品牌色 token 化等 CSS/UX 修复，新增 RELEASE_NOTES.md
 - 冲突处理：README.md / README_ZH.md 保留 FlexVault 本地版本；package.json 合并上游 overrides 并保留自托管依赖（`@libsql/client`、`dotenv`、`node-cron`、`ws`）
 - 重新生成 package-lock.json 对齐新 overrides
 
-### 修复（2026-09-27, commit `pending`）
+### 修复（2026-09-27, commit `7ce1b0a`）
 - 修复自托管 Web Vault 返回 500 的问题：`src/selfhosted/env.ts` 中 `createAssetsHandler` 对 `Request` 对象调用 `input.toString()` 得到 `[object Request]` 导致 `Invalid URL`，改为读取 `input.url`（该问题自首个自托管提交即存在，设置 `FRONTEND_PATH` 后必现）
 
 ### 修复（2026-09-07, commit `4fe653d`）
