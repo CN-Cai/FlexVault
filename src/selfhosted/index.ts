@@ -105,9 +105,23 @@ async function handleHttpRequest(request: Request, env: SelfHostedEnv): Promise<
   return applyCors(normalizedRequest, resp, env as any);
 }
 
+function firstHeaderValue(value: unknown): string {
+  const raw = Array.isArray(value) ? value[0] : value;
+  return String(raw ?? '').split(',')[0].trim();
+}
+
 function nodeRequestToWebRequest(req: http.IncomingMessage, body?: Buffer): Request {
-  const protocol = (req.socket as any).encrypted ? 'https' : 'http';
-  const host = req.headers.host || 'localhost';
+  // 反向代理（1Panel 网站、Nginx、Caddy 等）通常会终止 TLS，并把原始协议/主机放在
+  // X-Forwarded-* 里。这里必须还原，否则：
+  //   1) 同源校验（注册 / 密码提示）会把 https://域名 与 http://域名 判为不同源并返回
+  //      "Forbidden origin"；
+  //   2) /config 会把 http:// 的错误地址发给 Bitwarden 客户端。
+  const forwardedProto = firstHeaderValue(req.headers['x-forwarded-proto']).toLowerCase();
+  const protocol = forwardedProto === 'https' || forwardedProto === 'http'
+    ? forwardedProto
+    : ((req.socket as any).encrypted ? 'https' : 'http');
+  const forwardedHost = firstHeaderValue(req.headers['x-forwarded-host']);
+  const host = forwardedHost || req.headers.host || 'localhost';
   const url = `${protocol}://${host}${req.url}`;
 
   const headers = new Headers();
@@ -120,6 +134,21 @@ function nodeRequestToWebRequest(req: http.IncomingMessage, body?: Buffer): Requ
       } else {
         headers.set(key, value);
       }
+    }
+  }
+
+  // 没有反向代理时补一个客户端 IP：rate limit 依赖 CF-Connecting-IP / X-Real-IP /
+  // X-Forwarded-For，全都没有时 getClientIdentifier() 返回 null，公开接口会直接
+  // 403 "Client IP is required"（例如从局域网用 IP:端口 打开网页注册账号）。
+  // 只有在都不存在时才补，避免覆盖反代传来的真实客户端 IP。
+  if (
+    !headers.has('cf-connecting-ip')
+    && !headers.has('x-real-ip')
+    && !headers.has('x-forwarded-for')
+  ) {
+    const remoteAddress = req.socket?.remoteAddress;
+    if (remoteAddress) {
+      headers.set('x-forwarded-for', remoteAddress);
     }
   }
 
