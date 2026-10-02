@@ -85,7 +85,7 @@ jobs:
 
           if [[ "$REGISTRY_CHOICE" == "ghcr" || "$REGISTRY_CHOICE" == "both" ]]; then
             ghcr="ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/$name"
-            add "$ghcr:latest"
+            [[ "$IMAGE_TAG" == "latest" ]] || add "$ghcr:latest"
             add "$ghcr:$IMAGE_TAG"
           fi
 
@@ -95,7 +95,7 @@ jobs:
               exit 1
             fi
             acr="${ACR_REGISTRY%/}/${ACR_NAMESPACE}/$name"
-            add "$acr:latest"
+            [[ "$IMAGE_TAG" == "latest" ]] || add "$acr:latest"
             add "$acr:$IMAGE_TAG"
           fi
 
