@@ -19,4 +19,6 @@ ENV STORAGE_PATH=/app/data/attachments
 
 EXPOSE 3000
 
-CMD ["npx", "tsx", "--loader", "src/selfhosted/cloudflare-workers-loader.mjs", "src/selfhosted/index.ts"]
+# 注意：loader 与入口都必须带 "./" 前缀，否则 Node 会把 src 当成包名解析，
+# 报 ERR_MODULE_NOT_FOUND: Cannot find package 'src' 并导致容器反复重启。
+CMD ["npx", "tsx", "--loader", "./src/selfhosted/cloudflare-workers-loader.mjs", "./src/selfhosted/index.ts"]

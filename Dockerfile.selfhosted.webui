@@ -49,4 +49,6 @@ ENV NODE_ENV=production \
 EXPOSE 3000
 
 # JWT_SECRET 没有默认值，必须在 run/compose 时用 -e 传入（至少 32 字符）
-CMD ["npx", "tsx", "--loader", "src/selfhosted/cloudflare-workers-loader.mjs", "src/selfhosted/index.ts"]
+# 注意：loader 与入口都必须带 "./" 前缀。Node 把 loader 参数按 ESM 说明符解析，
+# 写成 src/... 会被当成包名去找，报 ERR_MODULE_NOT_FOUND: Cannot find package 'src'。
+CMD ["npx", "tsx", "--loader", "./src/selfhosted/cloudflare-workers-loader.mjs", "./src/selfhosted/index.ts"]
