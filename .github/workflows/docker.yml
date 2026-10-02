@@ -1,54 +1,176 @@
-name: Build and Push Docker Image to Aliyun ACR
+ame: Build FlexVault Docker Image (self-build)
 
+# 手动触发：仓库页面 -> Actions -> 左侧选本工作流 -> Run workflow
 on:
   workflow_dispatch:
     inputs:
+      image_name:
+        description: '镜像名（Docker 仓库名必须全小写，只允许 a-z0-9 和 . _ -）'
+        required: true
+        default: 'my-nodewarden-flexvault'
       tag:
-        description: 'Docker image tag (e.g., 1.4.6, latest)'
+        description: '镜像标签（可含大写，例如 latest / 1.8.0 / NodeWarden-FlexVault）'
         required: true
         default: 'latest'
+      registry:
+        description: '构建结果送到哪里'
+        type: choice
+        required: true
+        default: ghcr
+        options:
+          - ghcr   # GitHub 自带容器仓库，无需额外账号
+          - acr    # 阿里云 ACR，需要 4 个 Secrets
+          - both   # 同时推 GHCR 和 ACR
+          - none   # 只构建，导出 tar 到 Artifact，不用任何镜像仓库
+      dockerfile:
+        description: '用哪个 Dockerfile（webui=带 Web 界面，selfhosted=只有 API）'
+        type: choice
+        required: true
+        default: './Dockerfile.selfhosted.webui'
+        options:
+          - './Dockerfile.selfhosted.webui'
+          - './Dockerfile.selfhosted'
+      platforms:
+        description: '目标平台（只为个人在 x86 上用选 amd64 即可，多平台会慢很多）'
+        type: choice
+        required: true
+        default: linux/amd64
+        options:
+          - linux/amd64
+          - linux/amd64,linux/arm64
+
+permissions:
+  contents: read
+  packages: write   # 推 GHCR 需要
 
 jobs:
-  build-and-push:
+  build:
     runs-on: ubuntu-latest
-    
     steps:
-      - name: Checkout code
+      - name: Checkout
         uses: actions/checkout@v4
-      
+
       - name: Set up QEMU
+        if: ${{ inputs.platforms != 'linux/amd64' }}
         uses: docker/setup-qemu-action@v3
-      
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
-      
-      - name: Login to Aliyun Container Registry
+
+      - name: Compute image tags
+        id: meta
+        env:
+          IMAGE_NAME: ${{ inputs.image_name }}
+          IMAGE_TAG: ${{ inputs.tag }}
+          REGISTRY_CHOICE: ${{ inputs.registry }}
+          PLATFORMS: ${{ inputs.platforms }}
+          ACR_REGISTRY: ${{ secrets.ALIYUN_REGISTRY }}
+          ACR_NAMESPACE: ${{ secrets.ALIYUN_NAMESPACE }}
+        run: |
+          set -euo pipefail
+          name="$IMAGE_NAME"
+          if [[ ! "$name" =~ ^[a-z0-9]+([._-][a-z0-9]+)*$ ]]; then
+            echo "::error::镜像名 '$name' 不是合法的 Docker 仓库名：必须全小写，只能用 a-z0-9 . _ - 。"
+            echo "::error::大写写法请放到 tag 里，例如 my-nodewarden-flexvault:NodeWarden-FlexVault"
+            exit 1
+          fi
+
+          if [[ "$REGISTRY_CHOICE" == "none" && "$PLATFORMS" == *,* ]]; then
+            echo "::error::registry=none 时只能构建单一平台（tar 导出不支持多平台），请把 platforms 改为 linux/amd64"
+            exit 1
+          fi
+
+          tags=""
+          add() { tags+="$1"$'\n'; }
+
+          if [[ "$REGISTRY_CHOICE" == "ghcr" || "$REGISTRY_CHOICE" == "both" ]]; then
+            ghcr="ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/$name"
+            add "$ghcr:latest"
+            add "$ghcr:$IMAGE_TAG"
+          fi
+
+          if [[ "$REGISTRY_CHOICE" == "acr" || "$REGISTRY_CHOICE" == "both" ]]; then
+            if [[ -z "${ACR_REGISTRY:-}" || -z "${ACR_NAMESPACE:-}" ]]; then
+              echo "::error::缺少 Secrets：ALIYUN_REGISTRY / ALIYUN_NAMESPACE / ALIYUN_USERNAME / ALIYUN_PASSWORD（仓库 Settings -> Secrets and variables -> Actions）"
+              exit 1
+            fi
+            acr="${ACR_REGISTRY%/}/${ACR_NAMESPACE}/$name"
+            add "$acr:latest"
+            add "$acr:$IMAGE_TAG"
+          fi
+
+          if [[ "$REGISTRY_CHOICE" == "none" ]]; then
+            # 不推仓库时也要给镜像打一个本地标签，否则 docker save 拿不到名字
+            local_ref="$name:$IMAGE_TAG"
+            add "$local_ref"
+            echo "single_image=$local_ref" >> "$GITHUB_OUTPUT"
+          fi
+
+          {
+            echo "tags<<EOF"
+            printf '%s' "$tags"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
+          echo "解析出的镜像引用："
+          printf '%s' "$tags"
+
+      - name: Login to GHCR
+        if: ${{ inputs.registry == 'ghcr' || inputs.registry == 'both' }}
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Login to Aliyun ACR
+        if: ${{ inputs.registry == 'acr' || inputs.registry == 'both' }}
         uses: docker/login-action@v3
         with:
           registry: ${{ secrets.ALIYUN_REGISTRY }}
           username: ${{ secrets.ALIYUN_USERNAME }}
           password: ${{ secrets.ALIYUN_PASSWORD }}
-      
+
       - name: Build and push
         uses: docker/build-push-action@v5
         with:
           context: .
-          file: ./Dockerfile.selfhosted
-          platforms: linux/amd64,linux/arm64
-          push: true
+          file: ${{ inputs.dockerfile }}
+          platforms: ${{ inputs.platforms }}
+          push: ${{ inputs.registry != 'none' }}
+          load: ${{ inputs.registry == 'none' }}
           provenance: false
           sbom: false
-          tags: |
-            ${{ secrets.ALIYUN_REGISTRY }}/${{ secrets.ALIYUN_NAMESPACE }}/flexvault:latest
-            ${{ secrets.ALIYUN_REGISTRY }}/${{ secrets.ALIYUN_NAMESPACE }}/flexvault:${{ github.event.inputs.tag }}
-      
-      - name: Build summary
+          tags: ${{ steps.meta.outputs.tags }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Export image tar (registry=none)
+        if: ${{ inputs.registry == 'none' }}
         run: |
-          echo "## Docker Image Published" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "Image: \`${{ secrets.ALIYUN_REGISTRY }}/${{ secrets.ALIYUN_NAMESPACE }}/flexvault:${{ github.event.inputs.tag }}\`" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "### Pull Command" >> $GITHUB_STEP_SUMMARY
-          echo "\`\`\`bash" >> $GITHUB_STEP_SUMMARY
-          echo "docker pull ${{ secrets.ALIYUN_REGISTRY }}/${{ secrets.ALIYUN_NAMESPACE }}/flexvault:${{ github.event.inputs.tag }}" >> $GITHUB_STEP_SUMMARY
-          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+          set -euo pipefail
+          docker save "${{ steps.meta.outputs.single_image }}" | gzip -9 > flexvault-image.tar.gz
+          ls -lh flexvault-image.tar.gz
+
+      - name: Upload image tar (registry=none)
+        if: ${{ inputs.registry == 'none' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: flexvault-image-${{ inputs.tag }}
+          path: flexvault-image.tar.gz
+          retention-days: 7
+          if-no-files-found: error
+
+      - name: Summary
+        run: |
+          {
+            echo "## 构建完成"
+            echo ""
+            echo '```'
+            printf '%s' "${{ steps.meta.outputs.tags }}"
+            echo '```'
+            if [[ "${{ inputs.registry }}" == "none" ]]; then
+              echo ""
+              echo "镜像已打包为 Artifact：下载后在目标机器执行 \`docker load -i flexvault-image.tar.gz\`"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"

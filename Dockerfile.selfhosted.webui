@@ -1,0 +1,52 @@
+ FlexVault 自托管镜像（含 Web Vault 前端界面）
+#
+# 与 Dockerfile.selfhosted 的区别：多了一个 frontend 阶段，用 vite 构建 webapp，
+# 把产物 dist 复制进运行时镜像，并设置 FRONTEND_PATH=/app/dist，
+# 这样浏览器打开 http://localhost:3000 就能直接注册管理员账号、使用 Web Vault。
+#
+# 构建：
+#   docker build -f Dockerfile.selfhosted.webui -t my-nodewarden-flexvault:latest .
+
+# ---------- 1. 安装依赖（npm ci 会装全部依赖，含 devDependencies） ----------
+# 运行时用 npx tsx 启动，tsx 属于 devDependencies，前端构建也需要 vite/tailwind，
+# 所以这里不能加 --omit=dev。
+FROM node:22-alpine AS deps
+WORKDIR /app
+COPY package.json package-lock.json ./
+RUN npm ci
+
+# ---------- 2. 构建前端（vite outDir 是 ../dist，即 /app/dist） ----------
+FROM node:22-alpine AS frontend
+WORKDIR /app
+COPY --from=deps /app/node_modules ./node_modules
+COPY package.json package-lock.json ./
+COPY tsconfig.json ./
+COPY postcss.config.js tailwind.config.js ./
+COPY webapp ./webapp
+COPY shared ./shared
+RUN npm run build
+
+# ---------- 3. 运行时 ----------
+FROM node:22-alpine AS runtime
+WORKDIR /app
+COPY --from=deps /app/node_modules ./node_modules
+COPY package.json package-lock.json ./
+COPY tsconfig.json tsconfig.selfhosted.json ./
+COPY src ./src
+COPY shared ./shared
+COPY migrations ./migrations
+COPY --from=frontend /app/dist ./dist
+
+RUN mkdir -p /app/data
+
+ENV NODE_ENV=production \
+    DATABASE_PATH=/app/data/nodewarden.db \
+    STORAGE_PATH=/app/data/attachments \
+    FRONTEND_PATH=/app/dist \
+    PORT=3000 \
+    HOST=0.0.0.0
+
+EXPOSE 3000
+
+# JWT_SECRET 没有默认值，必须在 run/compose 时用 -e 传入（至少 32 字符）
+CMD ["npx", "tsx", "--loader", "src/selfhosted/cloudflare-workers-loader.mjs", "src/selfhosted/index.ts"]
