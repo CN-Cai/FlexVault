@@ -11,6 +11,18 @@
 | `Dockerfile.selfhosted.webui` | 多阶段构建：先构建前端，再产出带 Web Vault 界面的运行时镜像 |
 | `.dockerignore` | 缩小构建上下文（排除 .git / node_modules / dist / data） |
 
+## 当前状态：已构建成功 ✅
+
+- 工作流运行：`https://github.com/CN-Cai/FlexVault/actions/runs/37036384343`（约 2 分钟，全部步骤成功）
+- 镜像：`ghcr.io/cn-cai/my-nodewarden-flexvault:latest`
+  - digest `sha256:4e355451ceca4c1cc4c418e215ad0bbec72e7e84f709bc983ad11387c427cf43`
+  - linux/amd64，13 层，压缩后约 182 MiB
+  - 已确认镜像内 `FRONTEND_PATH=/app/dist`（带 Web 界面），构建日志里能看到 vite 在镜像构建中产出 `dist/index.html`
+- 包可见性：**匿名 `docker pull` 已可用，无需登录**（实测 ghcr.io 匿名 token 拉 manifest 返回 200）
+- 后续更新镜像：改代码 push 到 main 后，`Actions → Build FlexVault Docker Image (self-build) → Run workflow`，
+  想留版本就把 `tag` 换成 `1.8.1` 之类（`latest` 会被覆盖）
+- 管理包（改可见性/删版本）：`https://github.com/users/CN-Cai/packages/container/my-nodewarden-flexvault/settings`
+
 ---
 
 ## 一、云端构建（GitHub Actions → GHCR）
