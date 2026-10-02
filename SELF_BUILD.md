@@ -1,4 +1,4 @@
- 自建 FlexVault Docker 镜像（GHCR 云端构建）
+# 自建 FlexVault Docker 镜像（GHCR 云端构建）
 
 镜像名：`my-nodewarden-flexvault`（Docker 仓库名必须全小写；你原来的 `my-NodeWarden-FlexVault`
 只能当 tag 用，例如 `my-nodewarden-flexvault:NodeWarden-FlexVault`）。

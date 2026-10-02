@@ -1,4 +1,4 @@
-ame: Build FlexVault Docker Image (self-build)
+name: Build FlexVault Docker Image (self-build)
 
 # 手动触发：仓库页面 -> Actions -> 左侧选本工作流 -> Run workflow
 on:

@@ -1,4 +1,4 @@
- 减少上传给 Docker daemon / buildx 的构建上下文体积
+# 减少上传给 Docker daemon / buildx 的构建上下文体积
 .git
 .github
 node_modules

@@ -1,4 +1,4 @@
- FlexVault 自托管镜像（含 Web Vault 前端界面）
+# FlexVault 自托管镜像（含 Web Vault 前端界面）
 #
 # 与 Dockerfile.selfhosted 的区别：多了一个 frontend 阶段，用 vite 构建 webapp，
 # 把产物 dist 复制进运行时镜像，并设置 FRONTEND_PATH=/app/dist，
